@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "allocator.h"
 
 enum ObjectType {
     OBJECT_TYPE_INTEGER,
@@ -87,6 +88,8 @@ struct Context {
      * The number of objects required to trigger a garbage collection.
      */
     int32_t maxObjects;
+
+    sp_Allocator_t m_allocator;
 };
 
 typedef struct Context Context;
@@ -97,12 +100,17 @@ Context* newContext() {
     context->firstObject = NULL;
     context->objectCount = 0;
     context->maxObjects = 8;
+
+    sp_Allocator_initialize(&context->m_allocator);
+
     return context;
 }
 
 void deleteContext(Context *context) {
     context->stackSize = 0;
     collect(context);
+
+    sp_Allocator_destroy(&context->m_allocator);
     free(context);
 }
 
@@ -119,7 +127,7 @@ Object* newObject(Context* context, ObjectType type) {
         collect(context);
     }
 
-    Object* object = malloc(sizeof(Object));
+    Object* object = sp_Allocator_allocate(&context->m_allocator, sizeof(Object));
     object->type = type;
     object->next = context->firstObject;
     context->firstObject = object;
@@ -200,7 +208,7 @@ void sweep(Context* context) {
             Object* unreached = *object;
 
             *object = unreached->next;
-            free(unreached);
+            sp_Allocator_deallocate(&context->m_allocator, unreached);
             context->objectCount--;
         }
         else {
