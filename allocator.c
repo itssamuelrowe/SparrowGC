@@ -18,16 +18,14 @@ void sp_Allocator_initialize(sp_Allocator_t* allocator) {
 void sp_Allocator_destroy(sp_Allocator_t* allocator) {
 }
 
-static long countFreeLists(sp_Allocator_t* allocator) {
+static int32_t countFreeLists(sp_Allocator_t* allocator) {
     int result = 0;
 
-    // Lock before reading
     sp_FreeList_t* current = allocator->m_freeList;
     while (current != NULL) {
         result++;
         current = current->m_next;
     }
-    // Unlock after reading
 
     return result;
 }
