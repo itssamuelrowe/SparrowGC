@@ -6,52 +6,50 @@
 
 #include "allocator.h"
 
-void sp_Allocator_initialize(sp_Allocator_t* allocator) {
-    allocator->m_freeList = NULL;
-    allocator->m_statistics.m_pagesMapped = 0;
-    allocator->m_statistics.m_pagesUnmapped = 0;
-    allocator->m_statistics.m_chunksAllocated = 0;
-    allocator->m_statistics.m_chunksFreed = 0;
-    allocator->m_statistics.m_freeLength = 0;
-}
+static int32_t countFreeLists(sp_Allocator_t* allocator);
+static bool isSorted(sp_Allocator_t* allocator);
+static void coalesce(sp_Allocator_t* allocator);
+static void insertFreeList(sp_Allocator_t* allocator, sp_FreeList_t* freeList);
+static void addPage(sp_Allocator_t* allocator);
+static sp_FreeList_t* findChunk(sp_Allocator_t* allocator, size_t size);
+static size_t divide(size_t a, size_t b);
+static void* allocateLarge(sp_Allocator_t* allocator, size_t size);
 
-void sp_Allocator_destroy(sp_Allocator_t* allocator) {
-}
-
-static int32_t countFreeLists(sp_Allocator_t* allocator) {
+int32_t countFreeLists(sp_Allocator_t* allocator) {
     int result = 0;
 
-    sp_FreeList_t* current = allocator->m_freeList;
+    sp_FreeList_t* current = allocator->freeList;
     while (current != NULL) {
         result++;
-        current = current->m_next;
+        current = current->next;
     }
 
     return result;
 }
 
-static bool isSorted(sp_Allocator_t* allocator) {
-    sp_FreeList_t* current = allocator->m_freeList;
+bool isSorted(sp_Allocator_t* allocator) {
+    sp_FreeList_t* current = allocator->freeList;
     bool result = true;
-    while (current != NULL) {
-        if (current > current->m_next) {
+    
+    while (current != NULL && current->next != NULL) {
+        if (current > current->next) {
             result = false;
             break;
         }
-        current = current->m_next;
+        current = current->next;
     }
     return result;
 }
 
-static void coalesce(sp_Allocator_t* allocator) {
-    sp_FreeList_t* current = allocator->m_freeList;
+void coalesce(sp_Allocator_t* allocator) {
+    sp_FreeList_t* current = allocator->freeList;
     while (current != NULL) {
-        if ((void*)current + current->m_size == (void*)current->m_next) {
-            current->m_size = current->m_size + current->m_next->m_size;
-            current->m_next = current->m_next->m_next;
+        if ((void*)current + current->size == (void*)current->next) {
+            current->size = current->size + current->next->size;
+            current->next = current->next->next;
         }
         else {
-            current = current->m_next;
+            current = current->next;
         }
     }
 
@@ -60,35 +58,35 @@ static void coalesce(sp_Allocator_t* allocator) {
     }
 }
 
-static void insertFreeList(sp_Allocator_t* allocator, sp_FreeList_t* freeList) {
-    sp_FreeList_t* current = allocator->m_freeList;
+void insertFreeList(sp_Allocator_t* allocator, sp_FreeList_t* freeList) {
+    sp_FreeList_t* current = allocator->freeList;
     if (current == NULL) {
         /* There is no free list. The specified free list is the first one. */
-        allocator->m_freeList = freeList;
+        allocator->freeList = freeList;
     }
     else if (freeList < current) {
         /* Insert the new free list at the head of the linked list. */
-        freeList->m_next = current;
-        allocator->m_freeList = freeList;
+        freeList->next = current;
+        allocator->freeList = freeList;
     }
     else {
         while (true) {
             /* We are either at the end of the list or the new list should be
              * inserted between the current and current's successor.
              */
-            if((current->m_next == NULL) ||
-               (freeList > current && freeList < current->m_next)) {
-                freeList->m_next = current->m_next;
-                current->m_next = freeList;
+            if((current->next == NULL) ||
+               (freeList > current && freeList < current->next)) {
+                freeList->next = current->next;
+                current->next = freeList;
                 break;
             }
             // increment
-            current = current->m_next;
+            current = current->next;
         }
     }
 }
 
-static void addPage(sp_Allocator_t* allocator) {
+void addPage(sp_Allocator_t* allocator) {
     void* address = mmap(NULL, SP_PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
             MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
@@ -97,28 +95,28 @@ static void addPage(sp_Allocator_t* allocator) {
     }
     else {
         sp_FreeList_t* freeList = (sp_FreeList_t*)address;
-        freeList->m_size = SP_PAGE_SIZE;
-        freeList->m_next = NULL;
+        freeList->size = SP_PAGE_SIZE;
+        freeList->next = NULL;
         insertFreeList(allocator, freeList);
-        allocator->m_statistics.m_pagesMapped++;
+        allocator->statistics.pagesMapped++;
     }
 }
 
-static sp_FreeList_t* findChunk(sp_Allocator_t* allocator, size_t size) {
-    sp_FreeList_t* current = allocator->m_freeList;
+sp_FreeList_t* findChunk(sp_Allocator_t* allocator, size_t size) {
+    sp_FreeList_t* current = allocator->freeList;
     sp_FreeList_t* previous = NULL;
     sp_FreeList_t* secondBest = NULL;
     size_t minSize = 5000;
     sp_FreeList_t* bestChunk = NULL;
 
     while (current != NULL) {
-        if ((current->m_size >= size) && (current->m_size < minSize)) {
-            minSize = current->m_size;
+        if ((current->size >= size) && (current->size < minSize)) {
+            minSize = current->size;
             bestChunk = current;
             secondBest = previous;
         }
         previous = current;
-        current = current->m_next;
+        current = current->next;
     }
 
     sp_FreeList_t* result = bestChunk;
@@ -132,29 +130,29 @@ static sp_FreeList_t* findChunk(sp_Allocator_t* allocator, size_t size) {
     else {
         /* Remove the chunk from the free list before it is returned. */
         if (secondBest != NULL) {
-            secondBest->m_next = bestChunk->m_next;
+            secondBest->next = bestChunk->next;
         }
         else {
-            allocator->m_freeList = bestChunk->m_next;
+            allocator->freeList = bestChunk->next;
         }
 
         /* Evaluate the unused memory in the best chunk. If it's large enough,
          * return it back to the free list.
          */
-        size_t excessAmount = bestChunk->m_size - size;
+        size_t excessAmount = bestChunk->size - size;
         if (excessAmount > sizeof(sp_FreeList_t*) + sizeof(size_t)) {
-            bestChunk->m_size = size;
+            bestChunk->size = size;
             void* nextFreeAddress = (void*)bestChunk + size;
             sp_FreeList_t* excess = (sp_FreeList_t*)nextFreeAddress;
-            excess->m_size = excessAmount;
-            excess->m_next = NULL;
+            excess->size = excessAmount;
+            excess->next = NULL;
             insertFreeList(allocator, excess);
         }
     }
     return result;
 }
 
-static size_t divide(size_t a, size_t b) {
+size_t divide(size_t a, size_t b) {
     size_t result = a / b;
     if (result * b != a) {
         result++;
@@ -162,7 +160,7 @@ static size_t divide(size_t a, size_t b) {
     return result;
 }
 
-static void* allocateLarge(sp_Allocator_t* allocator, size_t size) {
+void* allocateLarge(sp_Allocator_t* allocator, size_t size) {
     int pageCount = divide(size, SP_PAGE_SIZE);
 
     /* Map enough pages for the large allocation. */
@@ -175,10 +173,10 @@ static void* allocateLarge(sp_Allocator_t* allocator, size_t size) {
     }
     else {
         sp_FreeList_t* newChunk = (sp_FreeList_t*)address;
-        newChunk->m_size = pageCount * SP_PAGE_SIZE;
-        newChunk->m_next = 0;
+        newChunk->size = pageCount * SP_PAGE_SIZE;
+        newChunk->next = 0;
 
-        allocator->m_statistics.m_pagesMapped += pageCount;
+        allocator->statistics.pagesMapped += pageCount;
 
         result = address + sizeof (size_t);
     }
@@ -186,6 +184,18 @@ static void* allocateLarge(sp_Allocator_t* allocator, size_t size) {
 }
 
 #define OBJECT_HEADER_SIZE sizeof (size_t)
+
+void sp_Allocator_initialize(sp_Allocator_t* allocator) {
+    allocator->freeList = NULL;
+    allocator->statistics.pagesMapped = 0;
+    allocator->statistics.pagesUnmapped = 0;
+    allocator->statistics.chunksAllocated = 0;
+    allocator->statistics.chunksFreed = 0;
+    allocator->statistics.freeLength = 0;
+}
+
+void sp_Allocator_destroy(sp_Allocator_t* allocator) {
+}
 
 void* sp_Allocator_allocate(sp_Allocator_t* allocator, size_t size) {
     void* result = NULL;
@@ -203,7 +213,7 @@ void* sp_Allocator_allocate(sp_Allocator_t* allocator, size_t size) {
         }
         else {
             void* address = findChunk(allocator, size);
-            allocator->m_statistics.m_chunksAllocated++;
+            allocator->statistics.chunksAllocated++;
 
             result = address + OBJECT_HEADER_SIZE;
         }
@@ -212,23 +222,22 @@ void* sp_Allocator_allocate(sp_Allocator_t* allocator, size_t size) {
 }
 
 void sp_Allocator_deallocate(sp_Allocator_t* allocator, void* object) {
-    allocator->m_statistics.m_chunksFreed++;
+    allocator->statistics.chunksFreed++;
     sp_FreeList_t* chunk = (sp_FreeList_t*)(object - OBJECT_HEADER_SIZE);
 
-    chunk->m_next = NULL;
-    if (chunk->m_size > SP_PAGE_SIZE) {
-        int32_t pages = divide(chunk->m_size, SP_PAGE_SIZE);
-        int result = munmap(chunk, chunk->m_size);
+    chunk->next = NULL;
+    if (chunk->size > SP_PAGE_SIZE) {
+        int32_t pages = divide(chunk->size, SP_PAGE_SIZE);
+        int result = munmap(chunk, chunk->size);
         if (result == -1) {
             printf("[internal error] Failed to unmap large page.\n");
         }
         else {
-            allocator->m_statistics.m_pagesUnmapped += pages;
+            allocator->statistics.pagesUnmapped += pages;
         }
     }
     else {
         insertFreeList(allocator, chunk);
     }
-
     coalesce(allocator);
 }
