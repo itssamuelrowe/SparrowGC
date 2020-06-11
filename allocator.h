@@ -14,11 +14,11 @@
  ******************************************************************************/
 
 struct sp_AllocatorStatistics_t {
-	int32_t m_pagesMapped;
-	int32_t m_pagesUnmapped;
-	int32_t m_chunksAllocated;
-	int32_t m_chunksFreed;
-	int32_t m_freeLength;
+	int32_t pagesMapped;
+	int32_t pagesUnmapped;
+	int32_t chunksAllocated;
+	int32_t chunksFreed;
+	int32_t freeLength;
 };
 
 typedef struct sp_AllocatorStatistics_t sp_AllocatorStatistics_t;
@@ -28,8 +28,8 @@ typedef struct sp_AllocatorStatistics_t sp_AllocatorStatistics_t;
  ******************************************************************************/
 
 struct sp_FreeList_t {
-   size_t m_size;
-   struct sp_FreeList_t* m_next;
+   size_t size;
+   struct sp_FreeList_t* next;
 };
 
 typedef struct sp_FreeList_t sp_FreeList_t;
@@ -39,8 +39,8 @@ typedef struct sp_FreeList_t sp_FreeList_t;
  ******************************************************************************/
 
 struct sp_Allocator_t {
-    sp_AllocatorStatistics_t m_statistics;
-    sp_FreeList_t* m_freeList;
+    sp_AllocatorStatistics_t statistics;
+    sp_FreeList_t* freeList;
 };
 
 typedef struct sp_Allocator_t sp_Allocator_t;

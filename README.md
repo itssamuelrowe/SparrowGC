@@ -1,6 +1,8 @@
-# Kush
+# SparrowGC
 
-SparrowGC is a memory management library which implements garbage collectors and allocators. It was primarily developed for use by Kush. However, it is flexible enough to be consumed by other runtimes.
+SparrowGC is a memory management library which implements garbage collectors and allocators.
+It was primarily developed for use by Kush. However, it is flexible enough to be consumed by
+other runtimes.
 
 ## Contributing
 
