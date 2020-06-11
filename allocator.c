@@ -30,7 +30,8 @@ int32_t countFreeLists(sp_Allocator_t* allocator) {
 bool isSorted(sp_Allocator_t* allocator) {
     sp_FreeList_t* current = allocator->freeList;
     bool result = true;
-    while (current != NULL) {
+    
+    while (current != NULL && current->next != NULL) {
         if (current > current->next) {
             result = false;
             break;
@@ -238,6 +239,5 @@ void sp_Allocator_deallocate(sp_Allocator_t* allocator, void* object) {
     else {
         insertFreeList(allocator, chunk);
     }
-
     coalesce(allocator);
 }
